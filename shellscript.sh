@@ -1,33 +1,33 @@
 #!/bin/bash
 
-# Thresholds
-CPU_THRESHOLD=80
-MEM_THRESHOLD=80
-DISK_THRESHOLD=90
-LOG_FILE="/var/log/system_health.log"
+# Configuration
+SOURCE_DIR="/path/to/source"   # Directory to back up
+BACKUP_DIR="/path/to/backup"   # Local backup storage path
+REMOTE_SERVER="user@remote-server:/remote/backup/location"
+LOG_FILE="/var/log/backup.log"
 
-# Check CPU Usage
-CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')
-if (( $(echo "$CPU_USAGE > $CPU_THRESHOLD" | bc -l) )); then
-    echo "[ALERT] High CPU Usage: ${CPU_USAGE}%" | tee -a $LOG_FILE
+# Timestamp for backup file
+TIMESTAMP=$(date "+%Y-%m-%d_%H-%M-%S")
+ARCHIVE_NAME="backup_$TIMESTAMP.tar.gz"
+
+# Create backup archive
+tar -czf "$BACKUP_DIR/$ARCHIVE_NAME" "$SOURCE_DIR" 2>>$LOG_FILE
+
+# Check if backup was successful
+if [ $? -eq 0 ]; then
+    echo "[INFO] Backup successful: $ARCHIVE_NAME" | tee -a $LOG_FILE
+    
+    # Transfer to remote server
+    scp "$BACKUP_DIR/$ARCHIVE_NAME" "$REMOTE_SERVER" 2>>$LOG_FILE
+    if [ $? -eq 0 ]; then
+        echo "[INFO] Backup uploaded successfully to remote server." | tee -a $LOG_FILE
+    else
+        echo "[ERROR] Failed to upload backup to remote server." | tee -a $LOG_FILE
+    fi
+else
+    echo "[ERROR] Backup failed." | tee -a $LOG_FILE
 fi
-
-# Check Memory Usage
-MEM_USAGE=$(free | awk '/Mem/{printf("%.2f"), $3/$2*100}')
-if (( $(echo "$MEM_USAGE > $MEM_THRESHOLD" | bc -l) )); then
-    echo "[ALERT] High Memory Usage: ${MEM_USAGE}%" | tee -a $LOG_FILE
-fi
-
-# Check Disk Space
-DISK_USAGE=$(df / | tail -1 | awk '{print $5}' | sed 's/%//')
-if (( DISK_USAGE > DISK_THRESHOLD )); then
-    echo "[ALERT] Low Disk Space: ${DISK_USAGE}% used" | tee -a $LOG_FILE
-fi
-
-# Check Running Processes
-TOP_PROCESSES=$(ps -eo pid,ppid,cmd,%mem,%cpu --sort=-%cpu | head -6)
-echo "[INFO] Top Processes:\n$TOP_PROCESSES" | tee -a $LOG_FILE
 
 # Cronjob suggestion for automation
-# Add this line to your crontab for periodic checks:
-# */10 * * * * /path/to/this_script.sh
+# Add this line to your crontab for daily backups:
+# 0 2 * * * /path/to/backup_solution.sh
